@@ -1,19 +1,120 @@
 import 'package:flutter/foundation.dart';
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user.dart';
 
 class AuthProvider extends ChangeNotifier {
-  static const String _demoSalt = 'estateiq-demo-salt-v1';
-
+  final _supabase = Supabase.instance.client;
   AppUser? _currentUser;
   bool _isLoading = false;
   String? _error;
 
-  final Map<String, AppUser> _users = {};
-
   AuthProvider() {
-    _seedDemoUsers();
+    _init();
+  }
+
+  UserRole _parseRole(dynamic value) {
+    final role = value?.toString() ?? '';
+    return UserRole.values.firstWhere(
+      (e) => e.name == role,
+      orElse: () => UserRole.buyer,
+    );
+  }
+
+  SubscriptionPlan _parsePlan(dynamic value) {
+    final plan = value?.toString() ?? '';
+    return SubscriptionPlan.values.firstWhere(
+      (e) => e.name == plan,
+      orElse: () => SubscriptionPlan.free,
+    );
+  }
+
+  String _initialsFromName(String name) {
+    final parts = name
+        .split(' ')
+        .where((part) => part.trim().isNotEmpty)
+        .toList(growable: false);
+    if (parts.isEmpty) return 'U';
+    return parts.map((e) => e[0]).take(2).join().toUpperCase();
+  }
+
+  bool _toBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is String) return value.toLowerCase() == 'true';
+    if (value is num) return value != 0;
+    return false;
+  }
+
+  AppUser _buildUser(User user, Map<String, dynamic>? profile) {
+    final metadata = user.userMetadata ?? <String, dynamic>{};
+    final name =
+        (profile?['name'] ?? metadata['full_name'] ?? 'User').toString();
+    final avatarInitials =
+        (profile?['avatar_initials'] as String?) ?? _initialsFromName(name);
+    final profileOnboarding = _toBool(profile?['has_completed_onboarding']) ||
+        _toBool(profile?['hasCompletedOnboarding']);
+    final metadataOnboarding = _toBool(metadata['has_completed_onboarding']) ||
+        _toBool(metadata['hasCompletedOnboarding']);
+
+    return AppUser(
+      id: user.id,
+      name: name,
+      email: user.email ?? '',
+      passwordHash: '',
+      role: _parseRole(profile?['role'] ?? metadata['role']),
+      plan: _parsePlan(profile?['plan'] ?? metadata['plan']),
+      avatarInitials: avatarInitials,
+      hasCompletedOnboarding: profileOnboarding || metadataOnboarding,
+      savedSearches: List<String>.from(profile?['saved_searches'] ?? const []),
+      preferences: UserPreferences.fromMap(
+        Map<String, dynamic>.from(profile?['preferences'] ?? const {}),
+      ),
+    );
+  }
+
+  Future<void> _setCurrentUserFromAuth(User user) async {
+    Map<String, dynamic>? profile;
+    try {
+      final response = await _supabase
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+      if (response != null) {
+        profile = Map<String, dynamic>.from(response);
+      }
+    } catch (_) {
+      // Keep auth functional even if profile lookup fails.
+    }
+    _currentUser = _buildUser(user, profile);
+    _error = null;
+  }
+
+  void _init() {
+    final existingUser = _supabase.auth.currentUser;
+    if (existingUser != null) {
+      _setCurrentUserFromAuth(existingUser).then((_) => notifyListeners());
+    }
+
+    _supabase.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      final user = session?.user;
+      if (user != null) {
+        _isLoading = true;
+        notifyListeners();
+
+        try {
+          await _setCurrentUserFromAuth(user);
+        } catch (e) {
+          _error = 'Error loading profile: $e';
+        } finally {
+          _isLoading = false;
+          notifyListeners();
+        }
+      } else {
+        _currentUser = null;
+        notifyListeners();
+      }
+    });
   }
 
   // Getters
@@ -28,81 +129,6 @@ class AuthProvider extends ChangeNotifier {
       _currentUser?.role == UserRole.agent ||
       _currentUser?.role == UserRole.admin;
 
-  void _seedDemoUsers() {
-    final demoUsers = [
-      AppUser(
-        id: 'demo-buyer',
-        name: 'Alex Buyer',
-        email: 'buyer@demo.com',
-        passwordHash: _hashPassword('demo123'),
-        role: UserRole.buyer,
-        plan: SubscriptionPlan.basic,
-        avatarInitials: 'AB',
-        savedSearches: const ['3bd San Jose under 900k'],
-        preferences: const UserPreferences(
-          budgetMin: 500000,
-          budgetMax: 950000,
-          preferredRegions: ['Willow Glen', 'Cambrian Park'],
-          propertyTypes: ['Single Family', 'Condo'],
-          riskTolerance: 'low',
-        ),
-        hasCompletedOnboarding: false,
-      ),
-      AppUser(
-        id: 'demo-investor',
-        name: 'Morgan Investor',
-        email: 'investor@demo.com',
-        passwordHash: _hashPassword('demo123'),
-        role: UserRole.investor,
-        plan: SubscriptionPlan.professional,
-        avatarInitials: 'MI',
-        savedSearches: const ['duplex high cap rate', 'tech hub apartments'],
-        preferences: const UserPreferences(
-          budgetMin: 700000,
-          budgetMax: 2000000,
-          preferredRegions: ['Downtown SJ', 'Berryessa'],
-          propertyTypes: ['Multi-Family', 'Duplex', 'Condo'],
-          riskTolerance: 'high',
-        ),
-        hasCompletedOnboarding: false,
-      ),
-      AppUser(
-        id: 'demo-agent',
-        name: 'Sam Agent',
-        email: 'agent@demo.com',
-        passwordHash: _hashPassword('demo123'),
-        role: UserRole.agent,
-        plan: SubscriptionPlan.professional,
-        avatarInitials: 'SA',
-        savedSearches: const [],
-        preferences: const UserPreferences(
-          budgetMin: 0,
-          budgetMax: 5000000,
-          preferredRegions: [],
-          propertyTypes: [],
-          riskTolerance: 'medium',
-        ),
-        hasCompletedOnboarding: false,
-      ),
-      AppUser(
-        id: 'demo-admin',
-        name: 'Admin User',
-        email: 'admin@demo.com',
-        passwordHash: _hashPassword('demo123'),
-        role: UserRole.admin,
-        plan: SubscriptionPlan.enterprise,
-        avatarInitials: 'AU',
-        savedSearches: const [],
-        preferences: const UserPreferences(),
-        hasCompletedOnboarding: false,
-      ),
-    ];
-
-    for (final user in demoUsers) {
-      _users[user.email] = user;
-    }
-  }
-
   Future<bool> register(
     String name,
     String email,
@@ -113,41 +139,38 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    try {
+      final response = await _supabase.auth.signUp(
+        email: email.trim(),
+        password: password.trim(),
+        data: {
+          'full_name': name.trim(),
+          'role': role.toString().split('.').last,
+          'has_completed_onboarding': false,
+        },
+      );
 
-    final normalizedEmail = _normalizeEmail(email);
+      if (response.user == null) {
+        _error = 'Could not create account. Please try again.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
 
-    if (_users.containsKey(normalizedEmail)) {
-      _error = 'An account with this email already exists.';
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on AuthException catch (e) {
+      _error = e.message;
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = 'Registration failed. Please try again.';
       _isLoading = false;
       notifyListeners();
       return false;
     }
-
-    final initials = name
-        .trim()
-        .split(' ')
-        .map((w) => w.isNotEmpty ? w[0] : '')
-        .take(2)
-        .join()
-        .toUpperCase();
-
-    final newUser = AppUser(
-      id: 'user-${DateTime.now().millisecondsSinceEpoch}',
-      name: name.trim(),
-      email: normalizedEmail,
-      passwordHash: _hashPassword(password),
-      role: role,
-      plan: SubscriptionPlan.free,
-      avatarInitials: initials,
-      hasCompletedOnboarding: false,
-    );
-
-    _users[newUser.email] = newUser;
-    _currentUser = newUser;
-    _isLoading = false;
-    notifyListeners();
-    return true;
   }
 
   Future<bool> login(String email, String password) async {
@@ -155,34 +178,66 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    final normalizedEmail = _normalizeEmail(email);
-    final user = _users[normalizedEmail];
-    if (user == null || user.passwordHash != _hashPassword(password)) {
-      _error = 'Invalid email or password.';
+    try {
+      final response = await _supabase.auth.signInWithPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      final user = response.user;
+      if (user == null) {
+        _error = 'Sign in succeeded but no user session was returned.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+      await _setCurrentUserFromAuth(user);
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on AuthException catch (e) {
+      if (e.message.toLowerCase().contains('email not confirmed')) {
+        _error = 'Please confirm your email before signing in.';
+      } else {
+        _error = e.message;
+      }
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = 'Sign in failed. Please try again.';
       _isLoading = false;
       notifyListeners();
       return false;
     }
-
-    _currentUser = user;
-    _isLoading = false;
-    notifyListeners();
-    return true;
   }
 
-  void logout() {
+  Future<void> logout() async {
+    await _supabase.auth.signOut();
     _currentUser = null;
     _error = null;
     notifyListeners();
   }
 
-  void updateProfile(AppUser updated) {
-    _users[updated.email] = updated;
-    if (_currentUser?.email == updated.email) {
-      _currentUser = updated;
+  Future<void> completeOnboarding() async {
+    if (_currentUser == null) return;
+
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {'has_completed_onboarding': true},
+        ),
+      );
+      _currentUser = _currentUser!.copyWith(hasCompletedOnboarding: true);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
     }
+  }
+
+  // ... (keeping other methods or stubbing them for now)
+  void updateProfile(AppUser updated) {
+    _currentUser = updated;
     notifyListeners();
   }
 
@@ -192,7 +247,6 @@ class AuthProvider extends ChangeNotifier {
     if (!searches.contains(query)) {
       searches.add(query);
       _currentUser = _currentUser!.copyWith(savedSearches: searches);
-      _users[_currentUser!.email] = _currentUser!;
       notifyListeners();
     }
   }
@@ -202,40 +256,34 @@ class AuthProvider extends ChangeNotifier {
     final searches = List<String>.from(_currentUser!.savedSearches)
       ..remove(query);
     _currentUser = _currentUser!.copyWith(savedSearches: searches);
-    _users[_currentUser!.email] = _currentUser!;
     notifyListeners();
   }
 
   void updatePreferences(UserPreferences prefs) {
     if (_currentUser == null) return;
     _currentUser = _currentUser!.copyWith(preferences: prefs);
-    _users[_currentUser!.email] = _currentUser!;
     notifyListeners();
+  }
+
+  void updateRole(UserRole role) async {
+    if (_currentUser == null) return;
+
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {'role': role.toString().split('.').last},
+        ),
+      );
+      _currentUser = _currentUser!.copyWith(role: role);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
   }
 
   void clearError() {
     _error = null;
     notifyListeners();
-  }
-
-  void updateRole(UserRole role) {
-    if (_currentUser == null) return;
-    _currentUser = _currentUser!.copyWith(role: role);
-    _users[_currentUser!.email] = _currentUser!;
-    notifyListeners();
-  }
-
-  void completeOnboarding() {
-    if (_currentUser == null) return;
-    _currentUser = _currentUser!.copyWith(hasCompletedOnboarding: true);
-    _users[_currentUser!.email] = _currentUser!;
-    notifyListeners();
-  }
-
-  String _normalizeEmail(String email) => email.trim().toLowerCase();
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode('$_demoSalt:${password.trim()}');
-    return sha256.convert(bytes).toString();
   }
 }

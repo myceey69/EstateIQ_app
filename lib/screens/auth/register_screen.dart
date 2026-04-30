@@ -34,12 +34,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _createAccount() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
-    await auth.register(
+    final success = await auth.register(
       _nameController.text.trim(),
       _emailController.text.trim(),
       _passwordController.text,
       _selectedRole,
     );
+    if (!mounted || !success) return;
+
+    if (!auth.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Account created. Please confirm your email, then sign in.'),
+        ),
+      );
+    }
+    Navigator.pop(context);
   }
 
   @override
@@ -87,10 +98,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Full Name',
                         labelStyle: TextStyle(color: AppColors.muted),
-                        prefixIcon: Icon(Icons.person_outline, color: AppColors.muted),
+                        prefixIcon:
+                            Icon(Icons.person_outline, color: AppColors.muted),
                       ),
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Name is required';
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Name is required';
+                        }
                         if (v.trim().length < 2) return 'Name is too short';
                         return null;
                       },
@@ -105,11 +119,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Email',
                         labelStyle: TextStyle(color: AppColors.muted),
-                        prefixIcon: Icon(Icons.email_outlined, color: AppColors.muted),
+                        prefixIcon:
+                            Icon(Icons.email_outlined, color: AppColors.muted),
                       ),
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Email is required';
-                        if (!v.contains('@') || !v.contains('.')) return 'Enter a valid email';
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Email is required';
+                        }
+                        if (!v.contains('@') || !v.contains('.')) {
+                          return 'Enter a valid email';
+                        }
                         return null;
                       },
                     ),
@@ -123,18 +142,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: InputDecoration(
                         labelText: 'Password',
                         labelStyle: const TextStyle(color: AppColors.muted),
-                        prefixIcon: const Icon(Icons.lock_outline, color: AppColors.muted),
+                        prefixIcon: const Icon(Icons.lock_outline,
+                            color: AppColors.muted),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
                             color: AppColors.muted,
                           ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
                         ),
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Password is required';
-                        if (v.length < 6) return 'Password must be at least 6 characters';
+                        if (v == null || v.isEmpty) {
+                          return 'Password is required';
+                        }
+                        if (v.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
                         return null;
                       },
                     ),
@@ -148,18 +175,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: InputDecoration(
                         labelText: 'Confirm Password',
                         labelStyle: const TextStyle(color: AppColors.muted),
-                        prefixIcon: const Icon(Icons.lock_outline, color: AppColors.muted),
+                        prefixIcon: const Icon(Icons.lock_outline,
+                            color: AppColors.muted),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                            _obscureConfirm
+                                ? Icons.visibility_off
+                                : Icons.visibility,
                             color: AppColors.muted,
                           ),
-                          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                          onPressed: () => setState(
+                              () => _obscureConfirm = !_obscureConfirm),
                         ),
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Please confirm your password';
-                        if (v != _passwordController.text) return 'Passwords do not match';
+                        if (v == null || v.isEmpty) {
+                          return 'Please confirm your password';
+                        }
+                        if (v != _passwordController.text) {
+                          return 'Passwords do not match';
+                        }
                         return null;
                       },
                     ),
@@ -179,9 +214,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       children: [
                         _roleChip(UserRole.buyer, 'Buyer', Icons.home_outlined),
                         const SizedBox(width: 10),
-                        _roleChip(UserRole.investor, 'Investor', Icons.trending_up),
+                        _roleChip(
+                            UserRole.investor, 'Investor', Icons.trending_up),
                         const SizedBox(width: 10),
-                        _roleChip(UserRole.agent, 'Agent', Icons.badge_outlined),
+                        _roleChip(
+                            UserRole.agent, 'Agent', Icons.badge_outlined),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -189,20 +226,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     // Error message
                     if (auth.error != null)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(
                           color: AppColors.bad.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.bad.withOpacity(0.4)),
+                          border:
+                              Border.all(color: AppColors.bad.withOpacity(0.4)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.error_outline, color: AppColors.bad, size: 18),
+                            const Icon(Icons.error_outline,
+                                color: AppColors.bad, size: 18),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 auth.error!,
-                                style: const TextStyle(color: AppColors.bad, fontSize: 13),
+                                style: const TextStyle(
+                                    color: AppColors.bad, fontSize: 13),
                               ),
                             ),
                           ],
@@ -226,7 +267,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               )
                             : const Text(
                                 'Create Account',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w600),
                               ),
                       ),
                     ),
@@ -276,7 +318,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.accent.withOpacity(0.15) : AppColors.bg1,
+            color:
+                isSelected ? AppColors.accent.withOpacity(0.15) : AppColors.bg1,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected ? AppColors.accent : AppColors.line,

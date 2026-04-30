@@ -36,11 +36,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _quickLogin(String email, String password) async {
+  void _fillSampleCredentials(String email, String password) {
     _emailController.text = email;
     _passwordController.text = password;
-    final auth = context.read<AuthProvider>();
-    await auth.login(email, password);
   }
 
   @override
@@ -103,10 +101,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Email',
                         labelStyle: TextStyle(color: AppColors.muted),
-                        prefixIcon: Icon(Icons.email_outlined, color: AppColors.muted),
+                        prefixIcon:
+                            Icon(Icons.email_outlined, color: AppColors.muted),
                       ),
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Email is required';
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Email is required';
+                        }
                         if (!v.contains('@')) return 'Enter a valid email';
                         return null;
                       },
@@ -121,17 +122,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: InputDecoration(
                         labelText: 'Password',
                         labelStyle: const TextStyle(color: AppColors.muted),
-                        prefixIcon: const Icon(Icons.lock_outline, color: AppColors.muted),
+                        prefixIcon: const Icon(Icons.lock_outline,
+                            color: AppColors.muted),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
                             color: AppColors.muted,
                           ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
                         ),
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Password is required';
+                        if (v == null || v.isEmpty) {
+                          return 'Password is required';
+                        }
                         return null;
                       },
                     ),
@@ -140,20 +147,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Error message
                     if (auth.error != null)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(
                           color: AppColors.bad.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.bad.withOpacity(0.4)),
+                          border:
+                              Border.all(color: AppColors.bad.withOpacity(0.4)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.error_outline, color: AppColors.bad, size: 18),
+                            const Icon(Icons.error_outline,
+                                color: AppColors.bad, size: 18),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 auth.error!,
-                                style: const TextStyle(color: AppColors.bad, fontSize: 13),
+                                style: const TextStyle(
+                                    color: AppColors.bad, fontSize: 13),
                               ),
                             ),
                           ],
@@ -177,7 +188,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               )
                             : const Text(
                                 'Sign In',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w600),
                               ),
                       ),
                     ),
@@ -190,7 +202,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           auth.clearError();
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                            MaterialPageRoute(
+                                builder: (_) => const RegisterScreen()),
                           );
                         },
                         child: const Text.rich(
@@ -212,18 +225,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Quick demo logins
-                    _buildDivider('Quick Demo Access'),
+                    // Sample credentials
+                    _buildDivider('Sample Credentials'),
                     const SizedBox(height: 16),
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
                       alignment: WrapAlignment.center,
                       children: [
-                        _demoButton('Try as Buyer', 'buyer@demo.com', AppColors.accent2, auth.isLoading),
-                        _demoButton('Try as Investor', 'investor@demo.com', AppColors.good, auth.isLoading),
-                        _demoButton('Try as Agent', 'agent@demo.com', AppColors.warn, auth.isLoading),
-                        _demoButton('Try as Admin', 'admin@demo.com', AppColors.bad, auth.isLoading),
+                        _demoButton('Fill Buyer Email', 'buyer@demo.com',
+                            AppColors.accent2, auth.isLoading),
+                        _demoButton('Fill Investor Email', 'investor@demo.com',
+                            AppColors.good, auth.isLoading),
+                        _demoButton('Fill Agent Email', 'agent@demo.com',
+                            AppColors.warn, auth.isLoading),
+                        _demoButton('Fill Admin Email', 'admin@demo.com',
+                            AppColors.bad, auth.isLoading),
                       ],
                     ),
                     const SizedBox(height: 32),
@@ -255,7 +272,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _demoButton(String label, String email, Color color, bool isLoading) {
     return OutlinedButton(
-      onPressed: isLoading ? null : () => _quickLogin(email, 'demo123'),
+      onPressed:
+          isLoading ? null : () => _fillSampleCredentials(email, 'demo123'),
       style: OutlinedButton.styleFrom(
         foregroundColor: color,
         side: BorderSide(color: color.withOpacity(0.5)),

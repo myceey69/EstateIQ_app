@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'config/app_config.dart';
 import 'providers/property_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/watchlist_provider.dart';
@@ -9,7 +11,15 @@ import 'screens/main_shell.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  AppConfig.validateSupabaseConfig();
+  
+  await Supabase.initialize(
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
+  );
+
   runApp(const MyApp());
 }
 

@@ -26,6 +26,8 @@ class Property {
   final int yearBuilt;
   final String description;
   final int imageGradientIndex;
+  final double? latitude;
+  final double? longitude;
 
   Property({
     required this.id,
@@ -45,6 +47,8 @@ class Property {
     this.yearBuilt = 0,
     this.description = '',
     this.imageGradientIndex = 0,
+    this.latitude,
+    this.longitude,
   });
 
   factory Property.fromJson(Map<String, dynamic> json) {
@@ -66,6 +70,8 @@ class Property {
       yearBuilt: json['yearBuilt'] ?? 0,
       description: json['description'] ?? '',
       imageGradientIndex: json['imageGradientIndex'] ?? 0,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
     );
   }
 

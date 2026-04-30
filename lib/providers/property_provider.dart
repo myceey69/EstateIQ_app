@@ -1,19 +1,33 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import '../data/location_data.dart';
+import '../models/city_location.dart';
 import '../models/property.dart';
 import '../models/neighborhood_scores.dart';
+import '../services/property_listing_service.dart';
 
 class PropertyProvider extends ChangeNotifier {
   List<Property> _properties = [];
   Property? _selectedProperty;
+  final PropertyListingService _listingService;
   String _searchQuery = '';
   String _activeFilter = 'All';
   String? _locationFilter;
   int? _minPrice;
   int? _maxPrice;
   int? _minBeds;
+  String? _selectedStateCode;
+  CityLocation? _selectedCity;
+  int _radiusMiles = 25;
+  bool _isLoadingListings = false;
+  String? _listingError;
+  bool _usingLiveListings = false;
 
-  PropertyProvider() {
+  PropertyProvider({PropertyListingService? listingService})
+      : _listingService = listingService ?? PropertyListingService() {
     _initializeDemoData();
+    refreshSaleListings();
   }
 
   // ── AI ranking score ──────────────────────────────────────────────────────
@@ -92,6 +106,21 @@ class PropertyProvider extends ChangeNotifier {
       result = result.where((p) => p.beds >= _minBeds!).toList();
     }
 
+    if (_selectedCity != null) {
+      result = result.where((p) {
+        final lat = p.latitude;
+        final lon = p.longitude;
+        if (lat == null || lon == null) return false;
+        return _distanceMiles(
+              _selectedCity!.latitude,
+              _selectedCity!.longitude,
+              lat,
+              lon,
+            ) <=
+            _radiusMiles;
+      }).toList();
+    }
+
     result.sort((a, b) => _rankScore(b).compareTo(_rankScore(a)));
     return result;
   }
@@ -108,6 +137,38 @@ class PropertyProvider extends ChangeNotifier {
   int? get minPrice => _minPrice;
   int? get maxPrice => _maxPrice;
   int? get minBeds => _minBeds;
+  String? get selectedStateCode => _selectedStateCode;
+  CityLocation? get selectedCity => _selectedCity;
+  int get radiusMiles => _radiusMiles;
+  bool get isLoadingListings => _isLoadingListings;
+  String? get listingError => _listingError;
+  bool get usingLiveListings => _usingLiveListings;
+  bool get canLoadLiveListings => _listingService.isConfigured;
+
+  List<CityLocation> citySuggestions(String query) {
+    if (_selectedStateCode == null) return const [];
+    final q = query.trim().toLowerCase();
+    final knownCities = cityLocations.where(
+      (city) =>
+          city.stateCode == _selectedStateCode &&
+          (q.isEmpty || city.name.toLowerCase().contains(q)),
+    );
+
+    final importedCities =
+        _properties.map(_cityFromProperty).whereType<CityLocation>().where(
+              (city) =>
+                  city.stateCode == _selectedStateCode &&
+                  (q.isEmpty || city.name.toLowerCase().contains(q)),
+            );
+
+    final byLabel = <String, CityLocation>{};
+    for (final city in [...knownCities, ...importedCities]) {
+      byLabel[city.label] = city;
+    }
+    final result = byLabel.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return result.take(12).toList();
+  }
 
   // ── Setters ───────────────────────────────────────────────────────────────
   void setSelectedProperty(Property? property) {
@@ -141,6 +202,97 @@ class PropertyProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setGeoFilter({
+    required String? stateCode,
+    required CityLocation? city,
+    required int radiusMiles,
+  }) {
+    _selectedStateCode = stateCode;
+    _selectedCity = city;
+    _radiusMiles = radiusMiles;
+    notifyListeners();
+  }
+
+  void clearGeoFilter() {
+    _selectedStateCode = null;
+    _selectedCity = null;
+    _radiusMiles = 25;
+    notifyListeners();
+  }
+
+  Future<void> refreshSaleListings({String? city, String? state}) async {
+    if (!_listingService.isConfigured) {
+      _usingLiveListings = false;
+      _listingError =
+          'Add RENTCAST_API_KEY to load free-tier live sale listings.';
+      notifyListeners();
+      return;
+    }
+
+    _isLoadingListings = true;
+    _listingError = null;
+    notifyListeners();
+
+    try {
+      final listings = await _listingService.fetchSaleListings(
+        city: city ?? _selectedCity?.name ?? 'San Jose',
+        state: state ?? _selectedStateCode ?? 'CA',
+      );
+      if (listings.isNotEmpty) {
+        _properties = listings;
+        _usingLiveListings = true;
+      } else {
+        _usingLiveListings = false;
+        _listingError = 'No live listings returned; showing demo inventory.';
+      }
+    } catch (error) {
+      _usingLiveListings = false;
+      _listingError = error.toString();
+    } finally {
+      _isLoadingListings = false;
+      notifyListeners();
+    }
+  }
+
+  CityLocation? _cityFromProperty(Property property) {
+    final lat = property.latitude;
+    final lon = property.longitude;
+    if (lat == null || lon == null || property.address.isEmpty) return null;
+    final parts = property.address.split(',').map((p) => p.trim()).toList();
+    if (parts.length < 3) return null;
+    final city = parts[1];
+    final state = parts[2].split(' ').first;
+    if (!usStates.containsKey(state)) return null;
+    return CityLocation(
+      name: city,
+      stateCode: state,
+      latitude: lat,
+      longitude: lon,
+    );
+  }
+
+  double _distanceMiles(
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
+  ) {
+    const earthRadiusMiles = 3958.7613;
+    final dLat = _radians(endLat - startLat);
+    final dLon = _radians(endLon - startLon);
+    final lat1 = _radians(startLat);
+    final lat2 = _radians(endLat);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusMiles * c;
+  }
+
+  double _radians(double degrees) => degrees * math.pi / 180;
+
   // ── Demo data ─────────────────────────────────────────────────────────────
   void _initializeDemoData() {
     _properties = [
@@ -164,6 +316,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Charming craftsman in the heart of Willow Glen. Updated kitchen, original hardwood floors, large backyard perfect for entertaining.',
         imageGradientIndex: 0,
+        latitude: 37.3034,
+        longitude: -121.8991,
       ),
       Property(
         id: 'SJ2',
@@ -185,6 +339,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Sleek downtown condo with city views. Open floor plan, gourmet kitchen, rooftop amenities. Steps from tech campuses and transit.',
         imageGradientIndex: 1,
+        latitude: 37.3352,
+        longitude: -121.8896,
       ),
       Property(
         id: 'SJ3',
@@ -206,6 +362,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Income-generating duplex in established Berryessa neighborhood. Both units tenant-occupied. Strong rental history with 5.5% cap rate.',
         imageGradientIndex: 2,
+        latitude: 37.3945,
+        longitude: -121.8545,
       ),
       Property(
         id: 'SJ4',
@@ -227,6 +385,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Solid ranch home in coveted Cambrian Park. Award-winning schools, quiet street, remodeled bathrooms. Perfect for families.',
         imageGradientIndex: 3,
+        latitude: 37.2601,
+        longitude: -121.9301,
       ),
       Property(
         id: 'SJ5',
@@ -248,6 +408,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Modern apartment in the emerging SoFA tech corridor. Smart home features, coworking lounge, bike storage. High demand from tech renters.',
         imageGradientIndex: 4,
+        latitude: 37.3324,
+        longitude: -121.8943,
       ),
       Property(
         id: 'SJ6',
@@ -269,6 +431,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Premium family home in top-rated Blossom Valley. Spacious backyard, 3-car garage, recently renovated kitchen. Excellent school district.',
         imageGradientIndex: 5,
+        latitude: 37.2422,
+        longitude: -121.8955,
       ),
       Property(
         id: 'SJ7',
@@ -290,6 +454,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Stunning Victorian in the historic Rose Garden district. Original architectural details, fully modernized systems, walking distance to downtown.',
         imageGradientIndex: 1,
+        latitude: 37.3337,
+        longitude: -121.9292,
       ),
       Property(
         id: 'SJ8',
@@ -311,6 +477,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Luxurious estate in prestigious Almaden Valley. Pool, 4-car garage, chef kitchen, panoramic hillside views. Top-ranked schools in the region.',
         imageGradientIndex: 3,
+        latitude: 37.2137,
+        longitude: -121.8632,
       ),
       Property(
         id: 'SJ9',
@@ -332,6 +500,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Turnkey investment property in rapidly gentrifying East Side. New roof and HVAC, long-term tenants in place. Strong rental yield.',
         imageGradientIndex: 2,
+        latitude: 37.3260,
+        longitude: -121.8157,
       ),
       Property(
         id: 'SJ10',
@@ -353,6 +523,8 @@ class PropertyProvider extends ChangeNotifier {
         description:
             'Upscale condo steps from Santana Row shops and dining. Concierge service, rooftop terrace, high-end finishes throughout. Strong appreciation trend.',
         imageGradientIndex: 0,
+        latitude: 37.3215,
+        longitude: -121.9478,
       ),
     ];
   }

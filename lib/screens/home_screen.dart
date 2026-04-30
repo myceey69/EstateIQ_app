@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../data/location_data.dart';
+import '../models/city_location.dart';
 import '../providers/property_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/property_card.dart';
@@ -19,6 +21,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // Bottom-sheet local state (held here so we can read after sheet close)
   RangeValues _priceRange = const RangeValues(200000, 2000000);
   int _minBeds = 0; // 0 = Any
+  String? _selectedStateCode;
+  CityLocation? _selectedCity;
+  int _radiusMiles = 25;
 
   @override
   void initState() {
@@ -59,6 +64,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final provider = context.read<PropertyProvider>();
     RangeValues sheetRange = _priceRange;
     int sheetBeds = _minBeds;
+    String? sheetStateCode = _selectedStateCode;
+    CityLocation? sheetCity = _selectedCity;
+    int sheetRadiusMiles = _radiusMiles;
 
     showModalBottomSheet(
       context: context,
@@ -69,8 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       builder: (_) => StatefulBuilder(
         builder: (ctx, setSheetState) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          final hasGeo = sheetStateCode != null && sheetCity != null;
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              32 + MediaQuery.of(ctx).viewInsets.bottom,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,6 +108,146 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 20,
                       fontWeight: FontWeight.bold),
                 ),
+                const SizedBox(height: 24),
+
+                const Text('Location',
+                    style: TextStyle(
+                        color: AppColors.text, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: sheetStateCode,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Select a state',
+                    prefixIcon: Icon(Icons.map_outlined, size: 18),
+                  ),
+                  items: usStates.entries
+                      .map(
+                        (entry) => DropdownMenuItem(
+                          value: entry.key,
+                          child: Text('${entry.value} (${entry.key})'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setSheetState(() {
+                    sheetStateCode = value;
+                    sheetCity = null;
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Autocomplete<CityLocation>(
+                  key: ValueKey(sheetStateCode),
+                  displayStringForOption: (city) => city.name,
+                  optionsBuilder: (value) {
+                    if (sheetStateCode == null) return const Iterable.empty();
+                    final query = value.text.trim().toLowerCase();
+                    return cityLocations
+                        .where((city) =>
+                            city.stateCode == sheetStateCode &&
+                            (query.isEmpty ||
+                                city.name.toLowerCase().contains(query)))
+                        .take(12);
+                  },
+                  onSelected: (city) => setSheetState(() => sheetCity = city),
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onFieldSubmitted) {
+                    if (sheetCity != null && controller.text.isEmpty) {
+                      controller.text = sheetCity!.name;
+                    }
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      enabled: sheetStateCode != null,
+                      decoration: InputDecoration(
+                        hintText: sheetStateCode == null
+                            ? 'Select state first'
+                            : 'Search city',
+                        prefixIcon: const Icon(Icons.location_city, size: 18),
+                        suffixIcon: sheetCity != null
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  controller.clear();
+                                  setSheetState(() => sheetCity = null);
+                                },
+                              )
+                            : null,
+                      ),
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        color: AppColors.bg1,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(10),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxHeight: 220,
+                            maxWidth: 340,
+                          ),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            itemBuilder: (context, index) {
+                              final city = options.elementAt(index);
+                              return ListTile(
+                                dense: true,
+                                title: Text(city.label),
+                                onTap: () => onSelected(city),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Distance Radius',
+                        style: TextStyle(
+                            color: AppColors.text,
+                            fontWeight: FontWeight.w600)),
+                    Text(
+                      hasGeo ? '$sheetRadiusMiles miles' : 'Choose city',
+                      style: const TextStyle(
+                          color: AppColors.accent, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [5, 10, 25, 50, 100].map((radius) {
+                    return ChoiceChip(
+                      label: Text('$radius mi'),
+                      selected: sheetRadiusMiles == radius,
+                      selectedColor: AppColors.accent.withOpacity(0.25),
+                      labelStyle: TextStyle(
+                        color: sheetRadiusMiles == radius
+                            ? AppColors.accent
+                            : AppColors.muted,
+                      ),
+                      backgroundColor: AppColors.panel,
+                      side: BorderSide(
+                        color: sheetRadiusMiles == radius
+                            ? AppColors.accent
+                            : AppColors.line,
+                      ),
+                      onSelected: sheetCity == null
+                          ? null
+                          : (_) =>
+                              setSheetState(() => sheetRadiusMiles = radius),
+                    );
+                  }).toList(),
+                ),
+
                 const SizedBox(height: 24),
 
                 // Price range
@@ -162,6 +316,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           setSheetState(() {
                             sheetRange = const RangeValues(200000, 2000000);
                             sheetBeds = 0;
+                            sheetStateCode = null;
+                            sheetCity = null;
+                            sheetRadiusMiles = 25;
                           });
                         },
                         style: OutlinedButton.styleFrom(
@@ -175,10 +332,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Apply
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
+                        onPressed: () async {
+                          final navigator = Navigator.of(context);
+                          final messenger = ScaffoldMessenger.of(context);
                           setState(() {
                             _priceRange = sheetRange;
                             _minBeds = sheetBeds;
+                            _selectedStateCode = sheetStateCode;
+                            _selectedCity = sheetCity;
+                            _radiusMiles = sheetRadiusMiles;
                           });
                           final minP = sheetRange.start > 200000 + 1
                               ? sheetRange.start.toInt()
@@ -188,8 +350,20 @@ class _HomeScreenState extends State<HomeScreen> {
                               : null;
                           provider.setPriceRange(minP, maxP);
                           provider.setMinBeds(sheetBeds > 0 ? sheetBeds : null);
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          provider.setGeoFilter(
+                            stateCode: sheetStateCode,
+                            city: sheetCity,
+                            radiusMiles: sheetRadiusMiles,
+                          );
+                          if (sheetCity != null) {
+                            await provider.refreshSaleListings(
+                              city: sheetCity!.name,
+                              state: sheetCity!.stateCode,
+                            );
+                          }
+                          if (!mounted) return;
+                          navigator.pop();
+                          messenger.showSnackBar(
                             SnackBar(
                               content: Text(
                                 '${provider.filteredProperties.length} properties match your filters',
@@ -214,6 +388,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasAdvancedFilters = _minBeds > 0 ||
+        _priceRange.start > 200000 + 1 ||
+        _priceRange.end < 2000000 - 1 ||
+        _selectedCity != null;
     return Column(
       children: [
         // ── Search + filters ─────────────────────────────────────────────
@@ -290,16 +468,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 44,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: (_minBeds > 0 ||
-                                    _priceRange.start > 200000 + 1 ||
-                                    _priceRange.end < 2000000 - 1)
+                            color: hasAdvancedFilters
                                 ? AppColors.accent.withOpacity(0.2)
                                 : AppColors.panel,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: (_minBeds > 0 ||
-                                      _priceRange.start > 200000 + 1 ||
-                                      _priceRange.end < 2000000 - 1)
+                              color: hasAdvancedFilters
                                   ? AppColors.accent
                                   : AppColors.line,
                             ),
@@ -307,9 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: IconButton(
                             icon: const Icon(Icons.tune, size: 18),
                             tooltip: 'Open filters',
-                            color: (_minBeds > 0 ||
-                                    _priceRange.start > 200000 + 1 ||
-                                    _priceRange.end < 2000000 - 1)
+                            color: hasAdvancedFilters
                                 ? AppColors.accent
                                 : AppColors.muted,
                             onPressed: () => _showFilterSheet(context),
@@ -330,10 +502,51 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
+                Icon(
+                  provider.usingLiveListings
+                      ? Icons.cloud_done_outlined
+                      : Icons.storage_outlined,
+                  color: provider.usingLiveListings
+                      ? AppColors.good
+                      : AppColors.muted,
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
                 Text(
                   '${provider.filteredProperties.length} properties found',
                   style: const TextStyle(color: AppColors.muted, fontSize: 12),
                 ),
+                if (_selectedCity != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      '${_selectedCity!.name} • $_radiusMiles mi',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (provider.isLoadingListings)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 16),
+                    tooltip: 'Refresh listings',
+                    color: AppColors.muted,
+                    visualDensity: VisualDensity.compact,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 32, height: 28),
+                    padding: EdgeInsets.zero,
+                    onPressed: provider.refreshSaleListings,
+                  ),
               ],
             ),
           ),

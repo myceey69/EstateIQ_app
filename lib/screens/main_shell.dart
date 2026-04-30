@@ -8,6 +8,7 @@ import 'profile/profile_screen.dart';
 import 'market/market_trends_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'watchlist/watchlist_screen.dart';
+import 'chat/gemini_chat_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({Key? key}) : super(key: key);
@@ -23,6 +24,7 @@ class _MainShellState extends State<MainShell> {
     HomeScreen(),
     MarketTrendsScreen(),
     DashboardScreen(),
+    GeminiChatScreen(),
     ProfileScreen(),
   ];
 
@@ -35,6 +37,8 @@ class _MainShellState extends State<MainShell> {
       case 2:
         return 'Dashboard';
       case 3:
+        return 'AI Chat';
+      case 4:
         return 'Profile';
       default:
         return 'EstateIQ';
@@ -155,6 +159,12 @@ class _MainShellState extends State<MainShell> {
                 selectedIcon:
                     Icon(Icons.dashboard_rounded, color: AppColors.accent),
                 label: 'Dashboard',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.auto_awesome_outlined),
+                selectedIcon:
+                    Icon(Icons.auto_awesome, color: AppColors.accent),
+                label: 'AI Chat',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline),

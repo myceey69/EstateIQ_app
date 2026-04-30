@@ -80,7 +80,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
       );
     }
-    auth.completeOnboarding();
+    await auth.completeOnboarding();
   }
 
   Future<void> _back() async {
